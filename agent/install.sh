@@ -18,7 +18,7 @@ cd "$(dirname "$0")"
 echo "==> Instalando dependências do sistema..."
 if command -v apt-get &>/dev/null; then
   apt-get update -qq
-  apt-get install -y wireguard-tools curl
+  apt-get install -y wireguard-tools curl openresolv || apt-get install -y wireguard-tools curl resolvconf
 fi
 
 mkdir -p /etc/wireguard

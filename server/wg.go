@@ -25,7 +25,9 @@ AllowedIPs = {{.IP}}/32
 const peerConfTpl = `[Interface]
 Address    = {{.PeerIP}}/24
 PrivateKey = {{.PrivateKey}}
+{{- if .Gateway}}
 DNS        = 1.1.1.1
+{{- end}}
 
 [Peer]
 PublicKey  = {{.ServerPublicKey}}
@@ -171,6 +173,7 @@ func (w *WireGuard) PeerConfig(p Peer) string {
 		"ServerPublicKey": store.ServerPublicKey,
 		"Endpoint":        fmt.Sprintf("%s:%d", w.cfg.VPSPublicIP, w.cfg.WGPort),
 		"AllowedIPs":      allowedIPs,
+		"Gateway":         p.Gateway,
 	})
 	return buf.String()
 }
