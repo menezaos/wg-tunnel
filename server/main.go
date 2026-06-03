@@ -54,8 +54,9 @@ func main() {
 
 	api := NewAPI(token, wg, fw, ds)
 
-	log.Printf("Painel web em http://0.0.0.0:8080")
-	log.Fatal(http.ListenAndServe(":8080", api.Handler()))
+	addr := fmt.Sprintf(":%d", cfg.WebPort)
+	log.Printf("Painel web em http://0.0.0.0:%d", cfg.WebPort)
+	log.Fatal(http.ListenAndServe(addr, api.Handler()))
 }
 
 func configFromEnv() *Config {
@@ -64,9 +65,14 @@ func configFromEnv() *Config {
 	if wgPort == 0 {
 		wgPort = 51820
 	}
+	webPort, _ := strconv.Atoi(envOr("WEB_PORT", "8080"))
+	if webPort == 0 {
+		webPort = 8080
+	}
 	return &Config{
 		VPSPublicIP: envOr("VPS_PUBLIC_IP", ""),
 		WGPort:      wgPort,
+		WebPort:     webPort,
 		WGSubnet:    envOr("WG_SUBNET", "10.10.0.0/24"),
 		WGIface:     envOr("WG_IFACE", "wg0"),
 		NetIface:    envOr("NET_IFACE", "eth0"),

@@ -58,6 +58,7 @@ func (p Peer) Public() PeerPublic {
 type Config struct {
 	VPSPublicIP string
 	WGPort      int
+	WebPort     int
 	WGSubnet    string
 	WGIface     string
 	NetIface    string
