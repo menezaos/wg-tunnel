@@ -21,7 +21,7 @@ if ! command -v go &>/dev/null; then
   esac
   curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${GO_ARCH}.tar.gz" -o /tmp/go.tar.gz
   rm -rf /usr/local/go
-  tar -C /usr/local -xzf /tmp/go.tar.gz
+  tar -C /usr/local -xzf /tmp/go.tar.gz --exclude='go/test' --exclude='go/doc'
   rm /tmp/go.tar.gz
   export PATH="$PATH:/usr/local/go/bin"
   echo "==> Go ${GO_VERSION} instalado."
