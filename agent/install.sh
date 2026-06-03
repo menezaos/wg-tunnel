@@ -11,20 +11,25 @@ cd "$(dirname "$0")"
 
 if ! command -v go &>/dev/null; then
   echo "==> Go não encontrado. Instalando..."
-  GO_VERSION="1.22.4"
-  ARCH=$(uname -m)
-  case "$ARCH" in
-    x86_64)  GO_ARCH="amd64" ;;
-    aarch64) GO_ARCH="arm64" ;;
-    armv7l)  GO_ARCH="armv6l" ;;
-    *)       echo "ERRO: arquitetura $ARCH não suportada"; exit 1 ;;
-  esac
-  curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${GO_ARCH}.tar.gz" -o /tmp/go.tar.gz
-  rm -rf /usr/local/go
-  tar -C /usr/local -xzf /tmp/go.tar.gz --exclude='go/test' --exclude='go/doc'
-  rm /tmp/go.tar.gz
-  export PATH="$PATH:/usr/local/go/bin"
-  echo "==> Go ${GO_VERSION} instalado."
+  if command -v apt-get &>/dev/null; then
+    apt-get install -y golang-go
+    export PATH="$PATH:/usr/local/go/bin"
+  else
+    GO_VERSION="1.22.4"
+    ARCH=$(uname -m)
+    case "$ARCH" in
+      x86_64)  GO_ARCH="amd64" ;;
+      aarch64) GO_ARCH="arm64" ;;
+      armv7l)  GO_ARCH="armv6l" ;;
+      *)       echo "ERRO: arquitetura $ARCH não suportada"; exit 1 ;;
+    esac
+    curl -fL "https://go.dev/dl/go${GO_VERSION}.linux-${GO_ARCH}.tar.gz" -o /tmp/go.tar.gz
+    rm -rf /usr/local/go
+    tar -C /usr/local -xzf /tmp/go.tar.gz --exclude='go/test' --exclude='go/doc'
+    rm /tmp/go.tar.gz
+    export PATH="$PATH:/usr/local/go/bin"
+    echo "==> Go ${GO_VERSION} instalado."
+  fi
 fi
 
 go build -ldflags="-s -w" -o "$SERVICE_NAME" .
