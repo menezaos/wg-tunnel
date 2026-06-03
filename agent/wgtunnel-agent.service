@@ -1,0 +1,25 @@
+[Unit]
+Description=WG Tunnel Agent
+After=network.target wg-quick@wg0.service
+Requires=wg-quick@wg0.service
+
+[Service]
+Type=simple
+Restart=on-failure
+RestartSec=10
+ExecStart=/usr/local/bin/wgtunnel-agent daemon
+ExecStop=/usr/local/bin/wgtunnel-agent teardown
+
+# Configure com os valores do painel web
+Environment=SERVER_URL=http://SEU_VPS_IP:8080
+Environment=AGENT_TOKEN=TOKEN_DO_PEER_AQUI
+
+# Opcionais
+Environment=WG_IFACE=wg0
+Environment=VPS_WG_IP=10.10.0.1
+Environment=RT_TABLE=200
+Environment=FWMARK=0x64
+Environment=POLL_INTERVAL=10
+
+[Install]
+WantedBy=multi-user.target

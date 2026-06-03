@@ -1,0 +1,22 @@
+services:
+  wgtunnel:
+    build: .
+    container_name: wgtunnel
+    restart: unless-stopped
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    volumes:
+      - /lib/modules:/lib/modules:ro
+      - wgtunnel-data:/data
+      - /etc/wireguard:/etc/wireguard
+    environment:
+      - VPS_PUBLIC_IP=${VPS_PUBLIC_IP}
+      - NET_IFACE=${NET_IFACE:-eth0}
+      - WG_PORT=${WG_PORT:-51820}
+      - WG_IFACE=${WG_IFACE:-wg0}
+      - DATA_DIR=/data
+
+volumes:
+  wgtunnel-data:

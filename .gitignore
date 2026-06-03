@@ -1,0 +1,22 @@
+# Binários compilados
+wgtunnel
+wgtunnel-agent
+*.exe
+
+# Ambiente — nunca suba o .env real
+server/.env
+
+# Dados em runtime (token, store, chaves WireGuard)
+data/
+
+# Artefatos Go
+vendor/
+
+# IDE / OS
+.vscode/
+.idea/
+*.DS_Store
+Thumbs.db
+
+# Claude Code
+.claude/
