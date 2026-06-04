@@ -28,13 +28,13 @@ static BOOL g_connected = FALSE;
 static void GetConfigDir(WCHAR *out, int len) {
     WCHAR base[MAX_PATH];
     GetEnvironmentVariable(L"APPDATA", base, MAX_PATH);
-    swprintf(out, len, L"%s\\WGTunnel", base);
+    swprintf(out, len, L"%ls\\WGTunnel", base);
 }
 
 static void LoadConfig(WCHAR *server, int sLen, WCHAR *token, int tLen) {
     WCHAR dir[MAX_PATH], ini[MAX_PATH];
     GetConfigDir(dir, MAX_PATH);
-    swprintf(ini, MAX_PATH, L"%s\\config.ini", dir);
+    swprintf(ini, MAX_PATH, L"%ls\\config.ini", dir);
     GetPrivateProfileString(L"config", L"server_url", L"", server, sLen, ini);
     GetPrivateProfileString(L"config", L"agent_token", L"", token, tLen, ini);
 }
@@ -42,7 +42,7 @@ static void LoadConfig(WCHAR *server, int sLen, WCHAR *token, int tLen) {
 static void SaveConfig(const WCHAR *server, const WCHAR *token) {
     WCHAR dir[MAX_PATH], ini[MAX_PATH];
     GetConfigDir(dir, MAX_PATH);
-    swprintf(ini, MAX_PATH, L"%s\\config.ini", dir);
+    swprintf(ini, MAX_PATH, L"%ls\\config.ini", dir);
     CreateDirectory(dir, NULL);
     WritePrivateProfileString(L"config", L"server_url", server, ini);
     WritePrivateProfileString(L"config", L"agent_token", token, ini);
@@ -52,26 +52,36 @@ static BOOL WireGuardInstalled(void) {
     return GetFileAttributes(WG_EXE) != INVALID_FILE_ATTRIBUTES;
 }
 
-static BOOL CheckConnected(void) {
+static SC_HANDLE OpenTunnelService(DWORD access) {
     WCHAR svcName[64];
-    swprintf(svcName, 64, L"WireGuardTunnel$%s", TUNNEL_NAME);
+    swprintf(svcName, 64, L"WireGuardTunnel$%ls", TUNNEL_NAME);
     SC_HANDLE hSCM = OpenSCManager(NULL, NULL, SC_MANAGER_CONNECT);
-    if (!hSCM) return FALSE;
-    SC_HANDLE hSvc = OpenService(hSCM, svcName, SERVICE_QUERY_STATUS);
-    BOOL running = FALSE;
-    if (hSvc) {
-        SERVICE_STATUS ss;
-        if (QueryServiceStatus(hSvc, &ss))
-            running = ss.dwCurrentState == SERVICE_RUNNING;
-        CloseServiceHandle(hSvc);
-    }
+    if (!hSCM) return NULL;
+    SC_HANDLE hSvc = OpenService(hSCM, svcName, access);
     CloseServiceHandle(hSCM);
+    return hSvc;
+}
+
+static BOOL TunnelServiceExists(void) {
+    SC_HANDLE hSvc = OpenTunnelService(SERVICE_QUERY_STATUS);
+    if (!hSvc) return FALSE;
+    CloseServiceHandle(hSvc);
+    return TRUE;
+}
+
+static BOOL CheckConnected(void) {
+    SC_HANDLE hSvc = OpenTunnelService(SERVICE_QUERY_STATUS);
+    if (!hSvc) return FALSE;
+    SERVICE_STATUS ss;
+    BOOL running = QueryServiceStatus(hSvc, &ss) &&
+                   ss.dwCurrentState == SERVICE_RUNNING;
+    CloseServiceHandle(hSvc);
     return running;
 }
 
 static BOOL RunWG(const WCHAR *arg1, const WCHAR *arg2) {
     WCHAR cmd[MAX_PATH + 512];
-    swprintf(cmd, MAX_PATH + 512, L"\"%s\" %s \"%s\"", WG_EXE, arg1, arg2);
+    swprintf(cmd, MAX_PATH + 512, L"\"%ls\" %ls \"%ls\"", WG_EXE, arg1, arg2);
     STARTUPINFO si = {sizeof(si)};
     si.dwFlags = STARTF_USESHOWWINDOW;
     si.wShowWindow = SW_HIDE;
@@ -86,16 +96,38 @@ static BOOL RunWG(const WCHAR *arg1, const WCHAR *arg2) {
     return code == 0;
 }
 
-static char *FetchWGConfig(const WCHAR *serverURL, const WCHAR *token, WCHAR *errOut, int errLen) {
-    URL_COMPONENTS uc = {sizeof(uc)};
-    WCHAR host[256] = {0}, urlPath[1024] = {0};
-    uc.lpszHostName = host;
-    uc.dwHostNameLength = 256;
-    uc.lpszUrlPath = urlPath;
-    uc.dwUrlPathLength = 1024;
+static BOOL ParseURL(const WCHAR *url, BOOL *https, WCHAR *host, int hostLen,
+                     INTERNET_PORT *port, WCHAR *path, int pathLen) {
+    const WCHAR *p = url;
+    if (wcsncmp(p, L"https://", 8) == 0) { *https = TRUE;  p += 8; *port = 443; }
+    else if (wcsncmp(p, L"http://", 7) == 0) { *https = FALSE; p += 7; *port = 80;  }
+    else return FALSE;
 
-    if (!WinHttpCrackUrl(serverURL, 0, 0, &uc)) {
-        swprintf(errOut, errLen, L"URL inválida");
+    const WCHAR *hostStart = p;
+    while (*p && *p != L':' && *p != L'/') p++;
+    int hLen = (int)(p - hostStart);
+    if (hLen == 0 || hLen >= hostLen) return FALSE;
+    wcsncpy(host, hostStart, hLen);
+    host[hLen] = 0;
+
+    if (*p == L':') {
+        p++;
+        *port = 0;
+        while (*p >= L'0' && *p <= L'9') { *port = *port * 10 + (*p - L'0'); p++; }
+    }
+
+    if (*p == L'/') { wcsncpy(path, p, pathLen - 1); path[pathLen - 1] = 0; }
+    else path[0] = 0;
+    return TRUE;
+}
+
+static char *FetchWGConfig(const WCHAR *serverURL, const WCHAR *token, WCHAR *errOut, int errLen) {
+    BOOL https = FALSE;
+    WCHAR host[256] = {0}, urlPath[1024] = {0};
+    INTERNET_PORT port = 80;
+
+    if (!ParseURL(serverURL, &https, host, 256, &port, urlPath, 1024)) {
+        swprintf(errOut, errLen, L"URL inválida: [%ls]", serverURL);
         return NULL;
     }
 
@@ -103,15 +135,15 @@ static char *FetchWGConfig(const WCHAR *serverURL, const WCHAR *token, WCHAR *er
     if (!urlPath[0] || (urlPath[0] == L'/' && !urlPath[1]))
         swprintf(path, 1024, L"/api/agent/wgconfig");
     else
-        swprintf(path, 1024, L"%s/api/agent/wgconfig", urlPath);
+        swprintf(path, 1024, L"%ls/api/agent/wgconfig", urlPath);
 
-    DWORD secFlags = (uc.nScheme == INTERNET_SCHEME_HTTPS) ? WINHTTP_FLAG_SECURE : 0;
+    DWORD secFlags = https ? WINHTTP_FLAG_SECURE : 0;
 
     HINTERNET hSess = WinHttpOpen(L"WGTunnelClient/1.0",
         WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, NULL, NULL, 0);
     if (!hSess) { swprintf(errOut, errLen, L"WinHTTP falhou"); return NULL; }
 
-    HINTERNET hConn = WinHttpConnect(hSess, host, uc.nPort, 0);
+    HINTERNET hConn = WinHttpConnect(hSess, host, port, 0);
     if (!hConn) {
         WinHttpCloseHandle(hSess);
         swprintf(errOut, errLen, L"Não foi possível conectar ao servidor");
@@ -126,7 +158,7 @@ static char *FetchWGConfig(const WCHAR *serverURL, const WCHAR *token, WCHAR *er
     }
 
     WCHAR auth[512];
-    swprintf(auth, 512, L"Authorization: Bearer %s", token);
+    swprintf(auth, 512, L"Authorization: Bearer %ls", token);
     WinHttpAddRequestHeaders(hReq, auth, -1L, WINHTTP_ADDREQ_FLAG_ADD);
 
     if (!WinHttpSendRequest(hReq, NULL, 0, NULL, 0, 0, 0) ||
@@ -192,7 +224,7 @@ static DWORD WINAPI ConnectThread(LPVOID p) {
 
     WCHAR dir[MAX_PATH], confPath[MAX_PATH];
     GetConfigDir(dir, MAX_PATH);
-    swprintf(confPath, MAX_PATH, L"%s\\wgtunnel.conf", dir);
+    swprintf(confPath, MAX_PATH, L"%ls\\wgtunnel.conf", dir);
     CreateDirectory(dir, NULL);
 
     HANDLE hf = CreateFile(confPath, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, 0, NULL);
@@ -206,8 +238,10 @@ static DWORD WINAPI ConnectThread(LPVOID p) {
     CloseHandle(hf);
     free(conf);
 
-    RunWG(L"/uninstalltunnelservice", TUNNEL_NAME);
-    Sleep(500);
+    if (TunnelServiceExists()) {
+        RunWG(L"/uninstalltunnelservice", TUNNEL_NAME);
+        Sleep(500);
+    }
 
     if (!RunWG(L"/installtunnelservice", confPath)) {
         SetWindowText(g_error, L"Falha ao instalar tunnel. Execute como Administrador.");
@@ -326,8 +360,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
                 SaveConfig(server, token);
 
                 WorkArgs *a = malloc(sizeof(WorkArgs));
-                swprintf(a->server, 512, L"%s", server);
-                swprintf(a->token, 256, L"%s", token);
+                swprintf(a->server, 512, L"%ls", server);
+                swprintf(a->token, 256, L"%ls", token);
 
                 SetWindowText(g_connect, L"Conectando...");
                 CreateThread(NULL, 0, ConnectThread, a, 0, NULL);
