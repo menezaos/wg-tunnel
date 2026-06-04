@@ -65,6 +65,9 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo ""
 
 read -rp "URL do servidor WG Tunnel (ex: http://1.2.3.4:8080): " SERVER_URL
+if [[ "$SERVER_URL" != http://* && "$SERVER_URL" != https://* ]]; then
+  SERVER_URL="http://${SERVER_URL}"
+fi
 read -rp "Token do peer (gerado no painel): " AGENT_TOKEN
 
 # ── 5. WireGuard config ────────────────────────────────────────────────────────

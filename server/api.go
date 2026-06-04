@@ -38,8 +38,9 @@ func (a *API) routes() {
 	a.mux.HandleFunc("/api/status", a.auth(a.handleStatus))
 	a.mux.HandleFunc("/api/config", a.auth(a.handleConfig))
 
-	// Endpoint do agente — autenticado pelo agent_token do peer
+	// Endpoints do agente — autenticados pelo agent_token do peer
 	a.mux.HandleFunc("/api/agent/config", a.handleAgentConfig)
+	a.mux.HandleFunc("/api/agent/wgconfig", a.handleAgentWGConfig)
 }
 
 func (a *API) auth(next http.HandlerFunc) http.HandlerFunc {
@@ -321,6 +322,23 @@ func (a *API) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"peer_count": len(store.Peers),
 		"rule_count": len(store.PortRules),
 	})
+}
+
+// handleAgentWGConfig retorna o arquivo .conf do WireGuard do peer, autenticado pelo agent_token.
+// Usado pelo cliente Windows para baixar a config sem precisar do token de admin.
+func (a *API) handleAgentWGConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	peer, ok := a.ds.FindPeerByAgentToken(token)
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain")
+	fmt.Fprint(w, a.wg.PeerConfig(peer))
 }
 
 func (a *API) handleConfig(w http.ResponseWriter, r *http.Request) {
